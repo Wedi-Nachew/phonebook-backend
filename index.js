@@ -6,6 +6,7 @@ const PORT = 3001;
 const generateRandomId = () => String(Math.floor(Math.random() * 1000));
 app.use(express.json());
 app.use(cors());
+app.use(express.static("dist"));
 
 morgan.token("body", function getRequestBody(req) {
     return JSON.stringify(req.body);
