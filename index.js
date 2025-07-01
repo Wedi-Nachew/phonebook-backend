@@ -1,32 +1,34 @@
+require("dotenv").config();
 const express = require("express");
+const Person = require("./models/person");
 const morgan = require("morgan");
 const cors = require("cors");
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT;
 const generateRandomId = () => String(Math.floor(Math.random() * 1000));
 app.use(express.json());
-app.use(cors());
 app.use(express.static("dist"));
+app.use(cors());
 
 morgan.token("body", function getRequestBody(req) {
     return JSON.stringify(req.body);
 });
 
-app.use(
-    morgan(
-        ":method :url :status :res[content-length] - :response-time ms :body"
-    )
-);
+// app.use(
+//     morgan(
+//         ":method :url :status :res[content-length] - :response-time ms :body"
+//     )
+// );
 
-// const requestLogger = (req, res, next) => {
-//     console.log("Method: ", req.method);
-//     console.log("Path: ", req.path);
-//     req.body && console.log("Body: ", req.body);
-//     console.log("-----------");
-//     next();
-// };
+const requestLogger = (req, res, next) => {
+    console.log("Method: ", req.method);
+    console.log("Path: ", req.path);
+    req.body && console.log("Body: ", req.body);
+    console.log("-----------");
+    next();
+};
 
-// app.use(requestLogger);
+app.use(requestLogger);
 
 let persons = [
     {
@@ -57,54 +59,72 @@ let persons = [
     },
 ];
 
-app.get("/api/persons", (req, res) => {
-    res.json(persons);
+app.get("/api/persons", (req, res, next) => {
+    Person.find({})
+        .then((savedPeople) => res.json(savedPeople))
+        .catch((error) => next(error));
 });
 
-app.get("/api/info", (req, res) => {
+app.get("/api/info", (req, res, next) => {
     const now = new Date().toString();
-    res.write(`<p>Phonebook has info for ${persons.length} people</p>`);
-    res.end(`<p>${now}</p>`);
+    Person.find({})
+        .then((result) => {
+            length = result.length;
+            res.write(`<p>Phonebook has info for ${length} people</p>`);
+            res.end(`<p>${now}</p>`);
+        })
+        .catch((error) => next(error));
 });
 
-app.get("/api/persons/:id", (req, res) => {
-    const id = req.params.id;
-    const person = persons.find((person) => person.id === id);
-    person ? res.json(person) : res.status(404).end();
+app.get("/api/persons/:id", (req, res, next) => {
+    Person.findById(req.params.id, { new: true, runValidators: true })
+        .then((person) => res.json(person))
+        .catch((error) => next(error));
 });
 
-app.delete("/api/persons/:id", (req, res) => {
-    const id = req.params.id;
-    persons = persons.filter((person) => person.id !== id);
-    console.log(persons);
-    res.status(204).end();
+app.delete("/api/persons/:id", (req, res, next) => {
+    Person.findByIdAndDelete(req.params.id)
+        .then((result) => res.status(204).end())
+        .catch((error) => next(error));
 });
 
-app.post("/api/persons", (req, res) => {
+app.post("/api/persons", (req, res, next) => {
     const body = req.body;
-    if (!body.name || !body.number) {
-        const missing = !body.name ? "name" : "number";
-        return res.status(400).json({ error: `${missing} missing` });
-    } else if (persons.find((person) => person.name === body.name)) {
-        return res
-            .status(400)
-            .json({ error: `${body.name} already exists in the phonebook` });
-    }
-
-    const person = {
-        id: generateRandomId(),
+    const person = new Person({
         name: body.name,
         number: body.number,
-    };
+    });
 
-    persons = persons.concat(person);
+    person
+        .save()
+        .then((savedPerson) => res.json(savedPerson))
+        .catch((error) => next(error));
+});
 
-    res.json(persons);
+app.put("/api/persons/:id", (req, res, next) => {
+    Person.findById(req.params.id)
+        .then((person) => {
+            console.log(person);
+            person.name = req.body.name;
+            person.number = req.body.number;
+
+            return person.save().then((updatedPerson) => {
+                console.log(updatedPerson);
+                res.json(updatedPerson);
+            });
+        })
+        .catch((error) => next(error));
 });
 
 const unknownEndpoint = (req, res, next) => {
-    console.log("unknown endpoint");
     res.status(404).send({ error: "unknown endpoint" });
 };
+
 app.use(unknownEndpoint);
+
+const errorHandler = (error, req, res, next) => {
+    res.status(400).send({ error: error.message });
+};
+
+app.use(errorHandler);
 app.listen(PORT, () => console.log(`server running on port ${PORT}`));
